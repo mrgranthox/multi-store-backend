@@ -1,0 +1,419 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["backend", "shared"]
+}
+
+model User {
+  id               String             @id @default(uuid())
+  email            String             @unique
+  password         String
+  phone            String?
+  firstName        String?
+  lastName         String?
+  profileImage     String?
+  role             String             @default("user")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  isActive         Boolean            @default(true)
+  preferredStoreId String?
+  lastLocationLat  Float?
+  lastLocationLng  Float?
+  emailVerified    Boolean            @default(false)
+  phoneVerified    Boolean            @default(false)
+  pushTokens       DeviceToken[]
+  orders           Order[]
+  PushNotification PushNotification[]
+  carts            ShoppingCart[]
+  storeManagers    StoreManager[]
+  addresses        UserAddress[]
+  sessions         UserSession[]
+
+  @@map("users")
+  @@schema("backend")
+}
+
+model Store {
+  id               String             @id @default(uuid())
+  name             String
+  description      String?
+  address          String?
+  city             String?
+  state            String?
+  zipCode          String?
+  country          String?
+  latitude         Float
+  longitude        Float
+  phone            String?
+  email            String?
+  openingHours     Json?
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  storeImage       String?
+  deliveryRadius   Int                @default(10)
+  minOrderAmount   Decimal            @db.Decimal(10, 2)
+  orders           Order[]
+  PushNotification PushNotification[]
+  inventories      StoreInventory[]
+  managers         StoreManager[]
+
+  @@map("stores")
+  @@schema("backend")
+}
+
+model StoreManager {
+  id          String   @id @default(uuid())
+  userId      String
+  storeId     String
+  role        String
+  permissions Json?
+  createdAt   DateTime @default(now())
+  isActive    Boolean  @default(true)
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("store_managers")
+  @@schema("backend")
+}
+
+model StoreInventory {
+  id                String    @id @default(uuid())
+  storeId           String
+  productId         String
+  quantityAvailable Int       @default(0)
+  reservedQuantity  Int       @default(0)
+  reorderLevel      Int?
+  maxStockLevel     Int?
+  lastRestocked     DateTime?
+  isAvailable       Boolean   @default(true)
+  priceOverride     Decimal?  @db.Decimal(10, 2)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  store             Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, productId])
+  @@index([storeId, productId])
+  @@map("store_inventory")
+  @@schema("backend")
+}
+
+model InventoryReservation {
+  id        String            @id @default(uuid())
+  storeId   String
+  productId String
+  quantity  Int
+  userId    String?
+  orderId   String?
+  status    ReservationStatus @default(reserved)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([storeId, productId])
+  @@index([userId])
+  @@map("inventory_reservations")
+  @@schema("backend")
+}
+
+model ShoppingCart {
+  id        String     @id @default(uuid())
+  userId    String
+  storeId   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  isActive  Boolean    @default(true)
+  items     CartItem[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, storeId])
+  @@map("shopping_carts")
+  @@schema("backend")
+}
+
+model CartItem {
+  id          String       @id @default(uuid())
+  cartId      String
+  productId   String
+  quantity    Int
+  priceAtTime Decimal      @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  cart        ShoppingCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@map("cart_items")
+  @@schema("backend")
+}
+
+model Order {
+  id                  String        @id @default(uuid())
+  orderNumber         String        @unique
+  userId              String
+  storeId             String
+  status              OrderStatus   @default(pending)
+  totalAmount         Decimal       @db.Decimal(12, 2)
+  taxAmount           Decimal       @db.Decimal(12, 2)
+  deliveryFee         Decimal       @db.Decimal(12, 2)
+  discountAmount      Decimal       @db.Decimal(12, 2)
+  paymentMethod       String?
+  paymentStatus       PaymentStatus @default(pending)
+  deliveryType        DeliveryType?
+  deliveryAddress     Json?
+  estimatedPickupTime DateTime?
+  actualPickupTime    DateTime?
+  specialInstructions String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  items               OrderItem[]
+  store               Store         @relation(fields: [storeId], references: [id])
+  user                User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, storeId])
+  @@index([userId, createdAt])
+  @@map("orders")
+  @@schema("backend")
+}
+
+model OrderItem {
+  id                  String  @id @default(uuid())
+  orderId             String
+  productId           String
+  productName         String
+  quantity            Int
+  unitPrice           Decimal @db.Decimal(10, 2)
+  totalPrice          Decimal @db.Decimal(12, 2)
+  specialInstructions String?
+  order               Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+  @@schema("backend")
+}
+
+model UserAddress {
+  id           String   @id @default(uuid())
+  userId       String
+  title        String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  zipCode      String
+  country      String
+  latitude     Float?
+  longitude    Float?
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_addresses")
+  @@schema("backend")
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  deviceId  String
+  platform  String
+  token     String
+  createdAt DateTime @default(now())
+  isActive  Boolean  @default(true)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, token])
+  @@map("device_tokens")
+  @@schema("backend")
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  sessionToken String   @unique
+  deviceType   String?
+  deviceId     String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  isActive     Boolean  @default(true)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+  @@schema("backend")
+}
+
+model PushNotification {
+  id      String           @id @default(uuid())
+  userId  String?
+  storeId String?
+  title   String
+  message String
+  type    NotificationType
+  data    Json?
+  sentAt  DateTime?
+  readAt  DateTime?
+  isRead  Boolean          @default(false)
+  store   Store?           @relation(fields: [storeId], references: [id])
+  user    User?            @relation(fields: [userId], references: [id])
+
+  @@map("push_notifications")
+  @@schema("backend")
+}
+
+model IdempotencyKey {
+  id          String            @id @default(uuid())
+  key         String
+  userId      String?
+  requestHash String?
+  response    Json?
+  status      IdempotencyStatus @default(in_progress)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([key, userId])
+  @@map("idempotency_keys")
+  @@schema("backend")
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  preparing
+  ready
+  completed
+  cancelled
+
+  @@schema("backend")
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+
+  @@schema("backend")
+}
+
+enum DeliveryType {
+  pickup
+  delivery
+
+  @@schema("backend")
+}
+
+enum ReservationStatus {
+  reserved
+  used
+  released
+  expired
+  cancelled
+
+  @@schema("backend")
+}
+
+enum NotificationType {
+  order_update
+  promotion
+  general
+
+  @@schema("backend")
+}
+
+enum IdempotencyStatus {
+  in_progress
+  completed
+  failed
+
+  @@schema("backend")
+}
+
+model Category {
+  id         String    @id @default(uuid())
+  strapiId   Int       @unique
+  name       String
+  slug       String?   @unique
+  description String?
+  image      String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  products   Product[]
+  @@map("categories")
+  @@index([strapiId])
+  @@schema("backend")
+}
+
+model Product {
+  id            String    @id @default(uuid())
+  strapiId      Int       @unique
+  name          String
+  slug          String?   @unique
+  description   String?
+  sku           String?   @unique
+  price         Decimal   @db.Decimal(10,2)
+  currency      String    @default("USD")
+  images        Json?
+  isActive      Boolean   @default(true)
+  featured      Boolean   @default(false)
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inventories   StoreInventory[]
+  orderItems    OrderItem[]
+  @@map("products")
+  @@index([strapiId])
+  @@index([sku])
+  @@schema("backend")
+  // MANUAL: Create GIN index for full-text search on (name, description)
+  // Example SQL: CREATE INDEX products_search_gin ON "backend"."products" USING GIN (to_tsvector('english', name || ' ' || coalesce(description, '')));
+}
+
+model Banner {
+  id         String   @id @default(uuid())
+  strapiId   Int      @unique
+  title      String
+  description String?
+  image      String
+  link       String?
+  isActive   Boolean  @default(true)
+  startDate  DateTime?
+  endDate    DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@map("banners")
+  @@index([strapiId])
+  @@schema("backend")
+}
+
+model Promotion {
+  id                 String   @id @default(uuid())
+  strapiId           Int      @unique
+  name               String
+  description        String?
+  discountType       String
+  discountValue      Decimal  @db.Decimal(10,2)
+  minOrderAmount     Decimal? @db.Decimal(10,2)
+  maxDiscountAmount  Decimal? @db.Decimal(10,2)
+  code               String?  @unique
+  isActive           Boolean  @default(true)
+  startDate          DateTime?
+  endDate            DateTime?
+  applicableProducts Json?
+  applicableCategories Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  @@map("promotions")
+  @@index([strapiId])
+  @@index([code])
+  @@schema("backend")
+}

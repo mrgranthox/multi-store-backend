@@ -1,0 +1,177 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecom_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate Prisma client
+      run: npx prisma generate
+
+    - name: Run database migrations
+      run: npx prisma migrate deploy
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_test?schema=public
+
+    # Zero-downtime migration strategy: add-column nullable + backfill + switch reads
+    - name: Run reconciliation (products & categories)
+      run: npm run reconcile:all
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_test?schema=public
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run unit tests
+      run: npm run test
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_test?schema=public
+        REDIS_URL: redis://localhost:6379
+        JWT_ACCESS_SECRET: test-access-secret
+        JWT_REFRESH_SECRET: test-refresh-secret
+        ACCESS_TOKEN_EXPIRES_IN: 15m
+        REFRESH_TOKEN_EXPIRES_IN: 30d
+        WEBHOOK_SECRET: test-webhook-secret
+        STRAPI_BASE_URL: https://test-strapi.com
+        STRAPI_WEBHOOK_SECRET: test-strapi-secret
+        RESERVATION_TTL_MINUTES: 15
+        RATE_LIMIT_WINDOW_MS: 60000
+        RATE_LIMIT_MAX_REQUESTS: 120
+        AUTH_RATE_LIMIT_WINDOW_MS: 900000
+        AUTH_RATE_LIMIT_MAX_ATTEMPTS: 10
+
+    - name: Run integration tests
+      run: npm run test:integration
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_test?schema=public
+        REDIS_URL: redis://localhost:6379
+        JWT_ACCESS_SECRET: test-access-secret
+        JWT_REFRESH_SECRET: test-refresh-secret
+        ACCESS_TOKEN_EXPIRES_IN: 15m
+        REFRESH_TOKEN_EXPIRES_IN: 30d
+        WEBHOOK_SECRET: test-webhook-secret
+        STRAPI_BASE_URL: https://test-strapi.com
+        STRAPI_WEBHOOK_SECRET: test-strapi-secret
+        RESERVATION_TTL_MINUTES: 15
+        RATE_LIMIT_WINDOW_MS: 60000
+        RATE_LIMIT_MAX_REQUESTS: 120
+        AUTH_RATE_LIMIT_WINDOW_MS: 900000
+        AUTH_RATE_LIMIT_MAX_ATTEMPTS: 10
+
+    - name: Run Postman tests
+      run: npm run postman
+      env:
+        API_BASE_URL: http://localhost:4000
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: success()
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate Prisma client
+      run: npx prisma generate
+
+    - name: Build application
+      run: npm run build
+
+    - name: Build Docker image
+      run: docker build -t multi-store-ecommerce:${{ github.sha }} .
+
+    - name: Test Docker image
+      run: |
+        docker run --rm -d --name test-app -p 4000:4000 \
+          -e DATABASE_URL=postgresql://test:test@localhost:5432/test \
+          -e REDIS_URL=redis://localhost:6379 \
+          -e JWT_ACCESS_SECRET=test-secret \
+          -e JWT_REFRESH_SECRET=test-secret \
+          multi-store-ecommerce:${{ github.sha }}
+        
+        # Wait for container to start
+        sleep 10
+        
+        # Test health endpoint
+        curl -f http://localhost:4000/health || exit 1
+        
+        # Clean up
+        docker stop test-app
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "Deployment to production would happen here"
+        echo "This could include:"
+        echo "- Deploying to Back4App"
+        echo "- Deploying to AWS/GCP/Azure"
+        echo "- Updating Kubernetes cluster"
+        echo "- Running database migrations"
+        echo "- Updating load balancer configuration"

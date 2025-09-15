@@ -1,0 +1,55 @@
+{
+  "id": "multi-store-ecommerce-env",
+  "name": "Multi-Store E-commerce Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "enabled": true,
+      "type": "secret"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "enabled": true,
+      "type": "secret"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "storeId",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "cartId",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "cartItemId",
+      "value": "",
+      "enabled": true,
+      "type": "default"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
